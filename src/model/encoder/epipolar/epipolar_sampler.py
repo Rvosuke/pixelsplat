@@ -1,3 +1,7 @@
+"""
+本文件定义了一个用于多视图3D重建或神经渲染的模块，主要涉及在多视图之间进行极线采样（Epipolar Sampling）。
+包含了一个数据类`EpipolarSampling`，用于存储采样结果，以及一个类`EpipolarSampler`，用于执行极线采样的操作。
+"""
 from dataclasses import dataclass
 
 import torch
@@ -60,9 +64,7 @@ class EpipolarSampler(nn.Module):
         b, v, _, _, _ = images.shape
 
         # Generate the rays that are projected onto other views.
-        xy_ray, origins, directions = self.generate_image_rays(
-            images, extrinsics, intrinsics
-        )
+        xy_ray, origins, directions = self.generate_image_rays(images, extrinsics, intrinsics)
 
         # Select the camera extrinsics and intrinsics to project onto. For each context
         # view, this means all other context views in the batch.

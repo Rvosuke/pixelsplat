@@ -11,7 +11,7 @@ class StepTracker:
     step: Int64[Tensor, ""]
 
     def __init__(self):
-        self.lock = Manager().RLock()
+        self.lock = Manager().RLock()  # 多线程锁
         self.step = torch.tensor(0, dtype=torch.int64).share_memory_()
 
     def set_step(self, step: int) -> None:

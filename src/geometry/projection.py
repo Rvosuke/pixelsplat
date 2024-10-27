@@ -96,7 +96,22 @@ def get_world_rays(
     Float[Tensor, "*batch dim+1"],  # origins
     Float[Tensor, "*batch dim+1"],  # directions
 ]:
+    """计算从相机原点出发、经过图像平面上给定像素坐标的射线（光线）在世界坐标系下的起点和方向。
+
+    Args:
+        coordinates:图像平面上的像素坐标 `(x, y)`。
+        extrinsics:相机的外参矩阵，形状为 `[..., 4, 4]`。
+        intrinsics:相机的内参矩阵，形状为 `[..., 3, 3]`。
+
+    Returns:
+        - `origins`：射线的起点，形状为 `[..., 3]`，在世界坐标系中。
+        - `directions`：射线的方向，形状为 `[..., 3]`，在世界坐标系中。
+    """
     # Get camera-space ray directions.
+    # **获取相机坐标系下的射线方向**：
+    # - 调用 `unproject`，使用给定的图像坐标和单位深度值（`z=1`），将2D图像坐标反投影到相机坐标系下的3D方向向量。
+    # - 由于深度值为1，因此得到的实际上是方向向量，而不是具体的3D点。
+    # - 归一化方向向量，使其长度为1。
     directions = unproject(
         coordinates,
         torch.ones_like(coordinates[..., 0]),
@@ -105,10 +120,17 @@ def get_world_rays(
     directions = directions / directions.norm(dim=-1, keepdim=True)
 
     # Transform ray directions to world coordinates.
+    # **将射线方向转换到世界坐标系**：
+    # - 使用 `homogenize_vectors` 将方向向量转换为齐次向量 `(x, y, z, 0)`。
+    # - 调用 `transform_cam2world`，使用外参矩阵将方向向量从相机坐标系转换到世界坐标系。
+    # - 最后丢弃齐次坐标中的最后一个维度，得到 `(x, y, z)`。
     directions = homogenize_vectors(directions)
     directions = transform_cam2world(directions, extrinsics)[..., :-1]
 
     # Tile the ray origins to have the same shape as the ray directions.
+    # **获取射线的起点（相机位置）**：
+    # - 从外参矩阵中提取相机在世界坐标系下的位置，即外参矩阵的前三行、第四列。
+    # - 使用 `broadcast_to` 将相机位置扩展到与方向向量相同的形状。
     origins = extrinsics[..., :-1, -1].broadcast_to(directions.shape)
 
     return origins, directions

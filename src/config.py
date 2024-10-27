@@ -61,10 +61,13 @@ def load_typed_config(
     data_class: Type[T],
     extra_type_hooks: dict = {},
 ) -> T:
+    data = OmegaConf.to_container(cfg)
+    config = Config(type_hooks={**TYPE_HOOKS, **extra_type_hooks})
+
     return from_dict(
-        data_class,
-        OmegaConf.to_container(cfg),
-        config=Config(type_hooks={**TYPE_HOOKS, **extra_type_hooks}),
+        data_class=data_class,
+        data=data,
+        config=config,
     )
 
 

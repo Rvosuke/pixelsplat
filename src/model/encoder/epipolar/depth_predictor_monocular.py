@@ -47,7 +47,8 @@ class DepthPredictorMonocular(nn.Module):
     ]:
         s = self.num_samples
 
-        # Convert the features into a depth distribution plus intra-bucket offsets.
+        # Convert the features into a
+        # depth distribution plus intra-bucket offsets.
         features = self.projection(features)
         pdf_raw, offset_raw = rearrange(
             features, "... (dpt srf c) -> c ... srf dpt", c=2, srf=self.num_surfaces
