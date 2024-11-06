@@ -106,6 +106,11 @@ class ModelWrapper(LightningModule):
         self.benchmarker = Benchmarker()
 
     def training_step(self, batch, batch_idx):
+        # 数据加载器（DataLoader）通常运行在CPU上，负责从磁盘读取数据并进行初步的预处理。
+        # 某些数据处理操作需要在GPU上进行，或者依赖于模型的状态（例如，编码器的特定需求）。
+        # data_shim提供了一种机制，允许在数据加载器之外，对数据进行进一步处理，满足模型的特殊需求。
+        # data_shim是在数据被加载到GPU后，模型前向传播之前执行的。
+        # 这确保了任何需要在GPU上执行的操作都可以在模型处理数据之前完成。
         batch: BatchedExample = self.data_shim(batch)
         _, _, _, h, w = batch["target"]["image"].shape
 
@@ -478,7 +483,8 @@ class ModelWrapper(LightningModule):
             assert isinstance(self.logger, LocalLogger)
             for key, value in visualizations.items():
                 tensor = value._prepare_video(value.data)
-                clip = mpy.ImageSequenceClip(list(tensor), fps=value._fps)
+                # clip = mpy.ImageSequenceClip(list(tensor), fps=value._fps)
+                clip = mpy.ImageSequenceClip(list(tensor), fps=2)
                 dir = LOG_PATH / key
                 dir.mkdir(exist_ok=True, parents=True)
                 clip.write_videofile(

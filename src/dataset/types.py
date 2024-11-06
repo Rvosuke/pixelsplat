@@ -44,6 +44,7 @@ class UnbatchedExample(TypedDict, total=False):
 
 
 # A data shim modifies the example after it's been returned from the data loader.
+# DataShim是一个可调用对象（函数），接收一个BatchedExample，返回一个BatchedExample。也就是说，DataShim是用于修改批量数据的函数。
 DataShim = Callable[[BatchedExample], BatchedExample]
 
 AnyExample = BatchedExample | UnbatchedExample

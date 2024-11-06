@@ -149,7 +149,7 @@ class EpipolarTransformer(nn.Module):
             w=w // self.cfg.downscale,
         )
 
-        # If needed, apply upscaling.
+        # If needed, apply up scaling.
         if self.upscaler is not None:
             features = rearrange(features, "b v c h w -> (b v) c h w")
             features = self.upscaler(features)

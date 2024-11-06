@@ -1,6 +1,6 @@
 name: resnet
 
-model: resnet50
+model: resnet18
 num_layers: 5
 use_first_pool: false
 d_out: 512

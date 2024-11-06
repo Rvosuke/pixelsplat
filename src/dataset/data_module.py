@@ -15,20 +15,24 @@ from .validation_wrapper import ValidationWrapper
 
 
 def get_data_shim(encoder: nn.Module) -> DataShim:
-    """Get functions that modify the batch. It's sometimes necessary to modify batches
-    outside the data loader because GPU computations are required to modify the batch or
-    because the modification depends on something outside the data loader.
+    """获取用于修改批处理数据的函数。
+    有时需要在数据加载器之外修改批处理数据，因为需要在GPU上进行计算，
+    或者因为修改依赖于数据加载器之外的内容。
     """
 
     shims: list[DataShim] = []
+    # 如果encoder对象有get_data_shim方法，那么调用该方法并将返回的函数添加到shims列表中。
+    # 此时意味着encoder可能需要对数据进行特定的预处理。
     if hasattr(encoder, "get_data_shim"):
         shims.append(encoder.get_data_shim())
 
+    # 这个内部函数遍历shims列表中的所有函数，对批处理数据batch依次进行处理。
+    # 最终返回修改后的batch。
     def combined_shim(batch):
         for shim in shims:
             batch = shim(batch)
         return batch
-
+    # get_data_shim函数返回combined_shim函数，供外部调用。
     return combined_shim
 
 
