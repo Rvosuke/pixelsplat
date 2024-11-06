@@ -79,6 +79,8 @@ def unproject(
     """Unproject 2D camera coordinates with the given Z values."""
 
     # Apply the inverse intrinsics to the coordinates.
+    # 原本的像素坐标是 `(x, y)`，经过 `intrinsics.inverse()` 后变为 `(x, y, 1)`。
+    # (b v xy) -> (b v xy1)
     coordinates = homogenize_points(coordinates)
     ray_directions = einsum(
         intrinsics.inverse(), coordinates, "... i j, ... j -> ... i"
@@ -97,9 +99,12 @@ def get_world_rays(
     Float[Tensor, "*batch dim+1"],  # directions
 ]:
     """计算从相机原点出发、经过图像平面上给定像素坐标的射线（光线）在世界坐标系下的起点和方向。
+    coordinates对于不同视角的图像都是通用的，但是extrinsics和intrinsics是特定于每个视角的。
+    这里为了加速计算，直接输入了多个视角的extrinsics和intrinsics，而不是单个视角的。
+    最终返回的也是多个视角的射线起点和方向。
 
     Args:
-        coordinates:图像平面上的像素坐标 `(x, y)`。
+        coordinates:图像平面上的归一化的像素坐标 `(x, y)`。
         extrinsics:相机的外参矩阵，形状为 `[..., 4, 4]`。
         intrinsics:相机的内参矩阵，形状为 `[..., 3, 3]`。
 
@@ -112,6 +117,7 @@ def get_world_rays(
     # - 调用 `unproject`，使用给定的图像坐标和单位深度值（`z=1`），将2D图像坐标反投影到相机坐标系下的3D方向向量。
     # - 由于深度值为1，因此得到的实际上是方向向量，而不是具体的3D点。
     # - 归一化方向向量，使其长度为1。
+    # 注意现在的direction shape 为 (b v h w 3)
     directions = unproject(
         coordinates,
         torch.ones_like(coordinates[..., 0]),
@@ -123,14 +129,14 @@ def get_world_rays(
     # **将射线方向转换到世界坐标系**：
     # - 使用 `homogenize_vectors` 将方向向量转换为齐次向量 `(x, y, z, 0)`。
     # - 调用 `transform_cam2world`，使用外参矩阵将方向向量从相机坐标系转换到世界坐标系。
-    # - 最后丢弃齐次坐标中的最后一个维度，得到 `(x, y, z)`。
+    # - 最后丢弃齐次坐标中的最后一个维度，得到 `(x, y, z)`。 shape 不变 (b v h w 3)
     directions = homogenize_vectors(directions)
     directions = transform_cam2world(directions, extrinsics)[..., :-1]
 
     # Tile the ray origins to have the same shape as the ray directions.
     # **获取射线的起点（相机位置）**：
-    # - 从外参矩阵中提取相机在世界坐标系下的位置，即外参矩阵的前三行、第四列。
-    # - 使用 `broadcast_to` 将相机位置扩展到与方向向量相同的形状。
+    # - 从外参矩阵中提取相机在世界坐标系下的位置，即外参矩阵的前三行、第四列。这里也说明射线的起点就是相机的位置。
+    # - 使用 `broadcast_to` 将相机位置扩展到与方向向量相同的形状, 即 (b v h w 3)
     origins = extrinsics[..., :-1, -1].broadcast_to(directions.shape)
 
     return origins, directions
@@ -143,7 +149,17 @@ def sample_image_grid(
     Float[Tensor, "*shape dim"],  # float coordinates (xy indexing)
     Int64[Tensor, "*shape dim"],  # integer indices (ij indexing)
 ]:
-    """Get normalized (range 0 to 1) coordinates and integer indices for an image."""
+    """Get normalized (range 0 to 1) coordinates and integer indices for an image.
+    获取形状为 `shape` 的图像的归一化坐标和整数索引。
+
+    Args:
+        shape: 图像的形状，如 `(height, width)`。
+        device: 生成的张量所在的设备。
+
+    Returns:
+        - `coordinates`：归一化坐标 `(x, y)`，范围为 `(0, 1)`。
+        - `stacked_indices`：整数坐标 `(row, col)`。
+    """
 
     # Each entry is a pixel-wise integer coordinate. In the 2D case, each entry is a
     # (row, col) coordinate.

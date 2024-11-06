@@ -14,9 +14,13 @@ def generate_heterogeneous_index(
     arange = torch.arange(n, device=device)
 
     # Generate an index that represents the item itself.
+    # 例如初始化时，n=3，index_self = tensor([[0, 0], [1, 1], [2, 2]])
     index_self = repeat(arange, "h -> h w", w=n - 1)
 
     # Generate an index that represents the other items.
+    # 例如初始化时，n=3，index_other = tensor([[0, 1, 2], [0, 1, 2], [0, 1, 2]])
+    # 加上对角线的1，得到tensor([[1, 2, 3], [0, 2, 3], [0, 1, 3]])
+    # 去掉最后一列，得到tensor([[1, 2], [0, 2], [0, 1]])
     index_other = repeat(arange, "w -> h w", h=n).clone()
     index_other += torch.ones((n, n), device=device, dtype=torch.int64).triu()
     index_other = index_other[:, :-1]

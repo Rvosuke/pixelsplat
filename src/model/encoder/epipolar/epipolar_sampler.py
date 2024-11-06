@@ -38,9 +38,9 @@ class EpipolarSampler(nn.Module):
     transpose_ov: Index
 
     def __init__(
-        self,
-        num_views: int,
-        num_samples: int,
+            self,
+            num_views: int,
+            num_samples: int,
     ) -> None:
         super().__init__()
         self.num_samples = num_samples
@@ -53,21 +53,23 @@ class EpipolarSampler(nn.Module):
         self.register_buffer("transpose_ov", t_ov, persistent=False)
 
     def forward(
-        self,
-        images: Float[Tensor, "batch view channel height width"],
-        extrinsics: Float[Tensor, "batch view 4 4"],
-        intrinsics: Float[Tensor, "batch view 3 3"],
-        near: Float[Tensor, "batch view"],
-        far: Float[Tensor, "batch view"],
+            self,
+            images: Float[Tensor, "batch view channel height width"],
+            extrinsics: Float[Tensor, "batch view 4 4"],
+            intrinsics: Float[Tensor, "batch view 3 3"],
+            near: Float[Tensor, "batch view"],
+            far: Float[Tensor, "batch view"],
     ) -> EpipolarSampling:
         device = images.device
         b, v, _, _, _ = images.shape
 
-        # Generate the rays that are projected onto other views.
+        # 生成投射到其他视图上的光线。
         xy_ray, origins, directions = self.generate_image_rays(images, extrinsics, intrinsics)
 
-        # Select the camera extrinsics and intrinsics to project onto. For each context
-        # view, this means all other context views in the batch.
+        # 选择要投影的相机外参和内参。对于每个上下文视图，这意味着批次中的所有其他上下文视图。
+        # origins 已经分析过了，是相机的位置，directions 是射线的单位方向向量。注意同一个视角的origins是一样的, 但是directions不一样。
+        # 这里的extrinsics和intrinsics是其他视角针对原始视角的。实际上每个视角的外参和内参都是一样的，只是针对不同的视角便于计算。
+        # 例如extrinsics[0, 1, 2]表示视角2的相机外参。
         projection = project_rays(
             rearrange(origins, "b v r xyz -> b v () r xyz"),
             rearrange(directions, "b v r xyz -> b v () r xyz"),
@@ -89,13 +91,11 @@ class EpipolarSampler(nn.Module):
         xy_max = rearrange(xy_max, "b v ov r xy -> b v ov r () xy")
         xy_sample = xy_min + sample_depth * (xy_max - xy_min)
 
-        # The samples' shape is (batch, view, other_view, ...). However, before the
-        # transpose, the view dimension refers to the view from which the ray is cast,
-        # not the view from which samples are drawn. Thus, we need to transpose the
-        # samples so that the view dimension refers to the view from which samples are
-        # drawn. If the diagonal weren't removed for efficiency, this would be a literal
-        # transpose. In our case, it's as if the diagonal were re-added, the transpose
-        # were taken, and the diagonal were then removed again.
+        # 样本的形状是(batch, view, other_view, ...)。
+        # 但是，在转置之前，视角维度指的是光线发射的视角，而不是样本提取的视角。
+        # 因此，我们需要对样本进行转置，以使视角维度指的是样本提取的视角。
+        # 如果不是为了效率而去掉对角线，这将是一个字面上的转置。
+        # 在我们的情况下，就好像对角线被重新添加，然后进行转置，最后又去掉对角线。
         samples = self.transpose(xy_sample)
         samples = F.grid_sample(
             rearrange(images, "b v c h w -> (b v) c h w"),
@@ -124,11 +124,11 @@ class EpipolarSampler(nn.Module):
             directions=directions,
         )
 
+    @staticmethod
     def generate_image_rays(
-        self,
-        images: Float[Tensor, "batch view channel height width"],
-        extrinsics: Float[Tensor, "batch view 4 4"],
-        intrinsics: Float[Tensor, "batch view 3 3"],
+            images: Float[Tensor, "batch view channel height width"],
+            extrinsics: Float[Tensor, "batch view 4 4"],
+            intrinsics: Float[Tensor, "batch view 3 3"],
     ) -> tuple[
         Float[Tensor, "batch view ray 2"],  # xy
         Float[Tensor, "batch view ray 3"],  # origins
@@ -136,6 +136,16 @@ class EpipolarSampler(nn.Module):
     ]:
         """Generate the rays along which Gaussians are defined. For now, these rays are
         simply arranged in a grid.
+
+        Args:
+            images: 批量输入的多视角图像。
+            extrinsics: 同上，多视角的相机外参。
+            intrinsics: 同上，多视角的相机内参。
+
+        Returns:
+            - `xy`： 所有批量+视角的像素网格的归一化坐标, ray = (h * w), 是直接将索引展平了.
+            - `origins`： 批量+多视角的射线起点，实际上是相机的位置。
+            - `directions`： 批量+多视角的射线的单位方向向量，经过了归一化。
         """
         b, v, _, h, w = images.shape
         xy, _ = sample_image_grid((h, w), device=images.device)
@@ -147,8 +157,8 @@ class EpipolarSampler(nn.Module):
         return repeat(xy, "h w xy -> b v (h w) xy", b=b, v=v), origins, directions
 
     def transpose(
-        self,
-        x: Shaped[Tensor, "batch view other_view *rest"],
+            self,
+            x: Shaped[Tensor, "batch view other_view *rest"],
     ) -> Shaped[Tensor, "batch view other_view *rest"]:
         b, v, ov, *_ = x.shape
         t_b = torch.arange(b, device=x.device)
@@ -158,11 +168,15 @@ class EpipolarSampler(nn.Module):
         return x[t_b, t_v, t_ov]
 
     def collect(
-        self,
-        target: Shaped[Tensor, "batch view ..."],
+            self,
+            target: Shaped[Tensor, "batch view ..."],
     ) -> Shaped[Tensor, "batch view view-1 ..."]:
+        """将目标张量收集到一个可以跨视图维度广播的张量中。这是通过为每个视图重复张量来完成的，但不包括视图本身。
+        实际上, 最终返回的张量的形状是 (batch, view, other_view, ...)。
+        这意味着对于每个视角, 找到除其本身外的其他视角的相关张量(内外参矩阵)。
+        """
         b, v, *_ = target.shape
         index_b = torch.arange(b, device=target.device)
         index_b = repeat(index_b, "b -> b v ov", v=v, ov=v - 1)
-        index_v = repeat(self.index_v, "v ov -> b v ov", b=b)
-        return target[index_b, index_v]
+        index_v = repeat(self.index_v, "v ov -> b v ov", b=b)  # 对应index_v的详细解释见misc/heterogeneous_pairings.py
+        return target[index_b, index_v]  # 这里使用了高级索引，实现了收集操作
